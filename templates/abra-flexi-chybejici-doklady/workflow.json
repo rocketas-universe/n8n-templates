@@ -1,0 +1,487 @@
+{
+  "name": "AbraFlexi - Banka - Chybejici doklady",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "client-name",
+              "name": "client_name",
+              "value": "NAZEV-UCETNI-JEDNOTKY",
+              "type": "string"
+            },
+            {
+              "id": "nazev-klienta",
+              "name": "nazev_klienta",
+              "value": "Demo Firma s.r.o.",
+              "type": "string"
+            },
+            {
+              "id": "google-sheet-link",
+              "name": "google_sheet_link",
+              "value": "https://docs.google.com/spreadsheets/d/VAS-GOOGLE-SHEET-ID/edit",
+              "type": "string"
+            },
+            {
+              "id": "send-to",
+              "name": "send_to",
+              "value": "klient@firma.cz, ucetni@vasefirma.cz",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        0
+      ],
+      "id": "e72c160a-fc14-44b6-a234-4549b5951ded",
+      "name": "Config Variables"
+    },
+    {
+      "parameters": {
+        "operation": "clear",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config Variables').item.json.google_sheet_link }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        }
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        448,
+        0
+      ],
+      "id": "6bcd1b3b-8152-4f01-a49a-5d6379e7abb0",
+      "name": "Clear_google_sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=https://VASE-INSTACE.flexibee.eu/c/{{ $('Config Variables').item.json.client_name }}/banka/(protiUcet='code:395001').json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "add-row-count",
+              "value": "true"
+            },
+            {
+              "name": "detail",
+              "value": "custom:id"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        656,
+        0
+      ],
+      "id": "abafed6c-e965-4cfb-bda9-3a2788566727",
+      "name": "Flexi - Get Row Count",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rowCount = $input.first().json.winstrom[\"@rowCount\"];\nconst pageSize = 5000;\nconst totalPages = Math.ceil(rowCount / pageSize);\n\n// Přeneseme client_name z Config Variables\nconst clientName = $('Config Variables').first().json.client_name;\n\nconst pages = [];\nfor (let i = 0; i < totalPages; i++) {\n  pages.push({\n    json: {\n      pageNumber: i,\n      start: i * pageSize,\n      limit: pageSize,\n      totalRows: rowCount,\n      totalPages: totalPages,\n      client_name: clientName\n    }\n  });\n}\n\nreturn pages;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        0
+      ],
+      "id": "7b83394f-f487-4922-91a5-5885b9deb893",
+      "name": "GeneratePages"
+    },
+    {
+      "parameters": {
+        "url": "=https://VASE-INSTACE.flexibee.eu/c/{{ $json.client_name }}/banka/(protiUcet='code:395001').json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "={{ $json.limit }}"
+            },
+            {
+              "name": "start",
+              "value": "={{ $json.start }}"
+            },
+            {
+              "name": "detail",
+              "value": "custom:kod,typPohybuK,varSym,datVyst,popis,sumCelkem,sumCelkemMen,zuctovano,vazby,castka,typVazbyK,buc,banka,primUcet,bic,specSym,protiUcet,nazFirmy"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1072,
+        0
+      ],
+      "id": "c2dd48bc-2a58-4a3e-a41e-8f5d4dce73f5",
+      "name": "Flexi - Fetch Page",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const allRecords = [];\n\nfor (const item of $input.all()) {\n  const bankaArray = item.json.winstrom?.banka || [];\n  \n  for (const row of bankaArray) {\n    allRecords.push({\n      json: {\n        kod: row.kod || '',\n        typPohybuK: row['typPohybuK@showAs'] || row.typPohybuK || '',\n        varSym: row.varSym || '',\n        datVyst: row.datVyst || '',\n        popis: row.popis || '',\n        sumCelkem: row.sumCelkem || 0,\n        sumCelkemMen: row.sumCelkemMen || '',\n        zuctovano: row.zuctovano || '',\n        castka: row.castka || 0,\n        buc: row.buc || '',\n        banka: row['banka@showAs'] || row.banka || '',\n        primUcet: row['primUcet@showAs'] || row.primUcet || '',\n        bic: row.bic || '',\n        specSym: row.specSym || '',\n        protiUcet: row['protiUcet@showAs'] || row.protiUcet || '',\n        nazFirmy: row.nazFirmy || ''\n      }\n    });\n  }\n}\n\nreturn allRecords;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        0
+      ],
+      "id": "dd5780de-9fbe-4648-8ac4-1e662c78c170",
+      "name": "transform_data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const results = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  \n  // Parsování datumu - z \"2025-08-06+02:00\" na \"6.8.2025\"\n  let datumFormatted = '';\n  if (row.datVyst) {\n    const datePart = row.datVyst.split('+')[0].split('T')[0];\n    const [year, month, day] = datePart.split('-');\n    datumFormatted = `${parseInt(day)}.${parseInt(month)}.${year}`;\n  }\n  \n  // Částka CZK - absolutní hodnota jako číslo\n  const castkaCZK = Math.abs(parseFloat(row.sumCelkem) || 0);\n  \n  // Částka v měně\n  const castkaMena = Math.abs(parseFloat(row.sumCelkemMen) || 0);\n  \n  // Extrakce dodavatele z popisu\n  let dodavatel = row.nazFirmy || '';\n  if (!dodavatel && row.popis) {\n    const popis = row.popis;\n    \n    // Rozdělíme podle středníků\n    const parts = popis.split(';');\n    \n    // První část obsahuje \"Platba kartou PK: XXXX text\"\n    if (parts.length > 0) {\n      // Odstraníme prefix \"Platba kartou PK: ČÍSLO_KARTY\"\n      let firstPart = parts[0].replace(/Platba kartou PK:\\s*\\d+X+\\d*\\s*/i, '').trim();\n      \n      // Pokud první část vypadá jako částka (číslo + měna), vezmi druhou část\n      if (/^\\d+[,.]?\\d*\\s*(USD|EUR|CZK|GBP)$/i.test(firstPart)) {\n        dodavatel = parts.length > 1 ? parts[1].trim() : firstPart;\n      } else {\n        dodavatel = firstPart;\n      }\n    }\n  }\n  \n  results.push({\n    json: {\n      'Datum transakce': datumFormatted,\n      'Castka CZK': castkaCZK,\n      'Castka v mene': castkaMena,\n      'Variabilni symbol': row.varSym || '',\n      'Dodavatel sluzby': dodavatel,\n      'Popis transakce': row.popis || '',\n      'Odpovedna osoba': ''\n    }\n  });\n}\n\n// Seřadit podle částky od největší po nejmenší\nresults.sort((a, b) => b.json['Castka CZK'] - a.json['Castka CZK']);\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        0
+      ],
+      "id": "2adc9fa8-feba-4fe2-b061-f551289983f4",
+      "name": "Format for Output"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $('Config Variables').item.json.google_sheet_link }}",
+          "mode": "url"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Sheet1",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Datum transakce",
+              "displayName": "Datum transakce",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Castka CZK",
+              "displayName": "Castka CZK",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Castka v mene",
+              "displayName": "Castka v mene",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Variabilni symbol",
+              "displayName": "Variabilni symbol",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Dodavatel sluzby",
+              "displayName": "Dodavatel sluzby",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Popis transakce",
+              "displayName": "Popis transakce",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Odpovedna osoba",
+              "displayName": "Odpovedna osoba",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1696,
+        0
+      ],
+      "id": "2045f0db-da1c-4810-9b13-61ed82747e24",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.limit",
+      "typeVersion": 1,
+      "position": [
+        1904,
+        0
+      ],
+      "id": "641d4abf-68a9-4b29-808d-f6469f16a479",
+      "name": "Limit"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Config Variables').item.json.send_to }}",
+        "subject": "={{ $('Config Variables').item.json.nazev_klienta }} | Rocketas | {{ $now.format('dd.MM.yyyy') }} - Chybějící doklady",
+        "message": "=<p>Dobrý den,</p><p>V příloze zasíláme přehled identifikovaných chybějících dokladů.</p><p><a href=\"{{ $('Config Variables').item.json.google_sheet_link }}\">Otevřít přehled chybějících dokladů</a></p><br><table cellpadding=\"0\" cellspacing=\"0\" style=\"font-family:Arial,sans-serif;font-size:14px;\"><tr><td style=\"padding-right:15px;vertical-align:top;\"><img src=\"https://i.imgur.com/z933XXw.png\" alt=\"Rocketas\" style=\"height:60px;\"></td><td style=\"vertical-align:top;\"><p style=\"margin:0;font-weight:bold;color:#000;\">Julie z Rocketas</p><p style=\"margin:0;color:#666;\">Automatizovaná asistentka</p><p style=\"margin:5px 0 0 0;\"><a href=\"https://www.rocketas.io\" style=\"color:#9b59b6;text-decoration:none;\">www.rocketas.io</a></p></td></tr></table>",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "Julie z Rocketas"
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2112,
+        0
+      ],
+      "id": "c6a1710a-f916-4d15-812b-8196870ecc54",
+      "name": "Send a message",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": ""
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Config Variables\n\n**client_name** - část URL pro ABRA Flexi\n- Použití: Flexi - Get Row Count, Flexi - Fetch Page\n\n**nazev_klienta** - název klienta pro email\n- Použití: Send a message (předmět)\n\n**google_sheet_link** - link na Google Sheet\n- Použití: Clear_google_sheet, Append row in sheet, Send a message\n\n**send_to** - email příjemce(ů), oddělené čárkou\n- Použití: Send a message\n\n",
+        "height": 564,
+        "width": 480
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        144,
+        272
+      ],
+      "id": "ad49225c-7a48-4796-9300-f2f0e93360af",
+      "name": "Sticky Note - Config"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * 3"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "815a6794-9d77-4087-b712-a7eb2195c6bb",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "connections": {
+    "Config Variables": {
+      "main": [
+        [
+          {
+            "node": "Clear_google_sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clear_google_sheet": {
+      "main": [
+        [
+          {
+            "node": "Flexi - Get Row Count",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flexi - Get Row Count": {
+      "main": [
+        [
+          {
+            "node": "GeneratePages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GeneratePages": {
+      "main": [
+        [
+          {
+            "node": "Flexi - Fetch Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Flexi - Fetch Page": {
+      "main": [
+        [
+          {
+            "node": "transform_data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "transform_data": {
+      "main": [
+        [
+          {
+            "node": "Format for Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format for Output": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        [
+          {
+            "node": "Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limit": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
